@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>間取り3Dビューア｜阿佐谷北A棟</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #F5F3EE;
+    --surface: #FFFFFF;
+    --border: #E0DDD6;
+    --text: #1A1A18;
+    --text2: #6B6B67;
+    --green: #3B6D11;
+    --green-light: #EAF3DE;
+    --blue: #185FA5;
+    --blue-light: #E6F1FB;
+    --amber: #854F0B;
+    --amber-light: #FAEEDA;
+  }
+
+  body {
+    font-family: 'Hiragino Sans', 'Noto Sans JP', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Header */
+  #header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 0 16px;
+    height: 48px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #header h1 { font-size: 14px; font-weight: 600; color: var(--text); }
+  #header span { font-size: 11px; color: var(--text2); }
+  .hbtn {
+    padding: 4px 12px; font-size: 11px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text2); cursor: pointer; transition: all .15s;
+  }
+  .hbtn:hover { background: var(--border); }
+  .hbtn.active { background: var(--text); color: #fff; border-color: var(--text); }
+
+  /* Layout */
+  #main { display: flex; flex: 1; overflow: hidden; }
+
+  /* Left panel */
+  #left { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+
+  /* Floor tabs */
+  #ftabs {
+    display: flex; gap: 4px; padding: 8px 12px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    flex-shrink: 0; align-items: center;
+  }
+  .ftab {
+    padding: 4px 14px; font-size: 12px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text2); cursor: pointer; transition: all .15s;
+  }
+  .ftab.active { background: var(--text); color: #fff; border-color: var(--text); }
+  #upload-btn {
+    margin-left: auto; padding: 4px 12px; font-size: 11px;
+    border-radius: 6px; border: 1px dashed var(--green);
+    background: var(--green-light); color: var(--green);
+    cursor: pointer; display: flex; align-items: center; gap: 5px;
+  }
+  #upload-btn:hover { background: #d4e8b4; }
+
+  /* View area */
+  #view-wrap { flex: 1; display: flex; overflow: hidden; }
+
+  /* 2D Plan */
+  #plan-wrap {
+    flex: 1; overflow: auto; padding: 16px;
+    background: var(--bg); display: flex; align-items: flex-start; justify-content: center;
+  }
+  #plan-svg { display: block; }
+
+  /* 3D View */
+  #three-wrap {
+    flex: 1; position: relative;
+    border-left: 1px solid var(--border); background: #ECEAE4;
+    min-height: 0;
+  }
+  #three-canvas { width: 100%; height: 100%; display: block; }
+  #three-hint {
+    position: absolute; bottom: 8px; right: 8px;
+    font-size: 10px; color: var(--text2);
+    background: rgba(255,255,255,0.85); padding: 3px 8px;
+    border-radius: 4px; border: 1px solid var(--border);
+  }
+  #three-loading {
+    position: absolute; inset: 0; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 8px;
+    background: #ECEAE4; font-size: 13px; color: var(--text2);
+  }
+  .spinner {
+    width: 24px; height: 24px; border: 2px solid var(--border);
+    border-top-color: var(--green); border-radius: 50%;
+    animation: spin .8s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* Room info bar */
+  #room-bar {
+    height: 28px; padding: 0 12px; display: flex; align-items: center;
+    font-size: 11px; color: var(--text2);
+    background: var(--surface); border-top: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  /* Right panel - Chat */
+  #chat-panel {
+    width: 300px; flex-shrink: 0;
+    display: flex; flex-direction: column;
+    background: var(--surface); border-left: 1px solid var(--border);
+  }
+  #chat-head {
+    padding: 10px 14px; border-bottom: 1px solid var(--border);
+    font-size: 13px; font-weight: 600; color: var(--text);
+    display: flex; align-items: center; gap: 6px;
+  }
+  #chat-head span { font-size: 11px; font-weight: 400; color: var(--text2); }
+  #chat-body {
+    flex: 1; overflow-y: auto; padding: 12px 10px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .msg { display: flex; flex-direction: column; max-width: 92%; }
+  .msg.user { align-self: flex-end; }
+  .msg.ai { align-self: flex-start; }
+  .msg-bubble {
+    padding: 8px 11px; border-radius: 10px;
+    font-size: 12px; line-height: 1.65; white-space: pre-wrap;
+  }
+  .msg.user .msg-bubble { background: var(--green); color: #fff; border-radius: 10px 10px 2px 10px; }
+  .msg.ai  .msg-bubble { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px 10px 10px 2px; }
+  .msg-img { max-width: 140px; border-radius: 6px; margin-bottom: 4px; }
+  .msg-time { font-size: 10px; color: var(--text2); margin-top: 3px; align-self: flex-end; }
+  .typing { display: flex; gap: 4px; align-items: center; padding: 10px 12px; }
+  .typing span {
+    width: 6px; height: 6px; background: var(--text2); border-radius: 50%;
+    animation: bounce .9s ease-in-out infinite;
+  }
+  .typing span:nth-child(2) { animation-delay: .15s; }
+  .typing span:nth-child(3) { animation-delay: .3s; }
+  @keyframes bounce { 0%,80%,100%{transform:translateY(0)} 40%{transform:translateY(-6px)} }
+
+  #chat-foot {
+    padding: 8px 10px; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  #chat-input {
+    width: 100%; padding: 8px 10px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 8px;
+    background: var(--bg); color: var(--text);
+    resize: none; outline: none; font-family: inherit;
+    transition: border-color .15s;
+  }
+  #chat-input:focus { border-color: var(--green); }
+  #chat-actions { display: flex; gap: 6px; align-items: center; }
+  #img-upload-btn {
+    padding: 5px 10px; font-size: 11px; border-radius: 6px;
+    border: 1px solid var(--border); background: var(--bg);
+    color: var(--text2); cursor: pointer; display: flex; align-items: center; gap: 4px;
+  }
+  #img-upload-btn:hover { background: var(--border); }
+  #send-btn {
+    margin-left: auto; padding: 5px 16px; font-size: 12px;
+    border-radius: 6px; border: none;
+    background: var(--green); color: #fff; cursor: pointer;
+    transition: opacity .15s;
+  }
+  #send-btn:disabled { opacity: .4; cursor: default; }
+
+  /* Upload overlay */
+  #upload-overlay {
+    display: none; position: fixed; inset: 0;
+    background: rgba(0,0,0,.5); z-index: 100;
+    align-items: center; justify-content: center;
+  }
+  #upload-overlay.show { display: flex; }
+  #upload-modal {
+    background: var(--surface); border-radius: 12px; padding: 24px;
+    width: 480px; max-width: 90vw;
+  }
+  #upload-modal h2 { font-size: 15px; font-weight: 600; margin-bottom: 6px; }
+  #upload-modal p { font-size: 12px; color: var(--text2); margin-bottom: 16px; }
+  #drop-zone {
+    border: 2px dashed var(--border); border-radius: 10px;
+    padding: 32px; text-align: center; cursor: pointer;
+    transition: all .15s; background: var(--bg);
+  }
+  #drop-zone.drag { border-color: var(--green); background: var(--green-light); }
+  #drop-zone svg { margin-bottom: 8px; }
+  #drop-zone p { font-size: 13px; color: var(--text2); }
+  #drop-zone strong { color: var(--green); }
+  #floor-select-row { display: flex; gap: 8px; margin-top: 16px; align-items: center; }
+  #floor-select-row label { font-size: 12px; color: var(--text2); }
+  #floor-select {
+    flex: 1; padding: 6px 10px; font-size: 12px;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text); outline: none;
+  }
+  #analyze-btn {
+    padding: 8px 20px; font-size: 13px; font-weight: 500;
+    border-radius: 8px; border: none;
+    background: var(--green); color: #fff; cursor: pointer;
+    margin-top: 16px; width: 100%; transition: opacity .15s;
+  }
+  #analyze-btn:disabled { opacity: .5; cursor: default; }
+  #cancel-btn {
+    padding: 8px 20px; font-size: 13px;
+    border-radius: 8px; border: 1px solid var(--border);
+    background: transparent; color: var(--text2); cursor: pointer;
+    margin-top: 8px; width: 100%;
+  }
+  #analyze-status { font-size: 12px; color: var(--text2); margin-top: 8px; min-height: 18px; }
+</style>
+</head>
+<body>
+
+<!-- Header -->
+<div id="header">
+  <h1>間取り3Dビューア</h1>
+  <span>A棟 — 阿佐谷北2-22-18</span>
+  <div style="flex:1"></div>
+  <button class="hbtn active" id="v-split" onclick="setView('split')">分割</button>
+  <button class="hbtn" id="v-2d" onclick="setView('2d')">平面図</button>
+  <button class="hbtn" id="v-3d" onclick="setView('3d')">3D</button>
+</div>
+
+<!-- Main -->
+<div id="main">
+  <!-- Left -->
+  <div id="left">
+    <!-- Floor tabs -->
+    <div id="ftabs">
+      <button class="ftab active" onclick="setFloor(1)">1階</button>
+      <button class="ftab" onclick="setFloor(2)">2階</button>
+      <button class="ftab" onclick="setFloor(3)">3階</button>
+      <button id="upload-btn" onclick="openUpload()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+        図面を読み込む
+      </button>
+    </div>
+
+    <!-- Views -->
+    <div id="view-wrap">
+      <div id="plan-wrap">
+        <svg id="plan-svg" width="400" height="420"></svg>
+      </div>
+      <div id="three-wrap">
+        <canvas id="three-canvas"></canvas>
+        <div id="three-loading">
+          <div class="spinner"></div>
+          <span>3D読み込み中...</span>
+        </div>
+        <div id="three-hint">ドラッグ:回転　ホイール:ズーム</div>
+      </div>
+    </div>
+
+    <div id="room-bar">部屋をクリックすると寸法を表示</div>
+  </div>
+
+  <!-- Chat -->
+  <div id="chat-panel">
+    <div id="chat-head">
+      修正チャット
+      <span>Claude AI</span>
+    </div>
+    <div id="chat-body"></div>
+    <div id="chat-foot">
+      <textarea id="chat-input" rows="2" placeholder="修正内容を入力... (Shift+Enterで改行)"></textarea>
+      <div id="chat-actions">
+        <button id="img-upload-btn" onclick="document.getElementById('chat-img-input').click()">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+          図面を添付
+        </button>
+        <input id="chat-img-input" type="file" accept="image/*" style="display:none" onchange="onChatImg(this)">
+        <button id="send-btn" onclick="sendChat()">送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload Modal -->
+<div id="upload-overlay">
+  <div id="upload-modal">
+    <h2>手書き図面を読み込む</h2>
+    <p>手書きの間取り図を撮影した画像をアップロードすると、Claude が部屋を自動認識して3Dに反映します。</p>
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="onDrop(event)">
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#888" stroke-width="1.5"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="12" y2="12"/><line x1="15" y1="15" x2="12" y2="12"/></svg>
+      <p><strong>クリックまたはドラッグ</strong>して画像をアップロード</p>
+      <p style="font-size:11px;margin-top:4px">JPG / PNG / HEIC 対応</p>
+    </div>
+    <input id="file-input" type="file" accept="image/*" style="display:none" onchange="onFileSelect(this)">
+    <div id="floor-select-row">
+      <label>対象階：</label>
+      <select id="floor-select">
+        <option value="1">1階</option>
+        <option value="2">2階</option>
+        <option value="3">3階</option>
+        <option value="all">全階（まとめて解析）</option>
+      </select>
+    </div>
+    <div id="analyze-status"></div>
+    <button id="analyze-btn" onclick="analyzeImage()" disabled>解析して3Dに反映</button>
+    <button id="cancel-btn" onclick="closeUpload()">キャンセル</button>
+  </div>
+</div>
+
+<script>
+// =============================================
+// データ
+// =============================================
+const FLOORS = {
+  1: {
+    label: "1階", sub: "LDK・水回り・玄関・デッキ",
+    floorH: 2800,
+    rooms: [
+      { id:"ldk",    name:"LDK",          x:0,    y:0,    w:3680, d:5500, fill:"#C8E8A0", realW:3680, realD:5500 },
+      { id:"deck",   name:"デッキ",        x:0,    y:5500, w:3680, d:1200, fill:"#E8D9A0", realW:3680, realD:1200 },
+      { id:"ent",    name:"玄関",          x:3680, y:5500, w:2690, d:1200, fill:"#E0D8C8", realW:2690, realD:1200 },
+      { id:"stairs", name:"階段",          x:3680, y:2800, w:1320, d:2700, fill:"#D8D4CC", realW:1320, realD:2700 },
+      { id:"bath",   name:"浴室",          x:3680, y:1600, w:1320, d:1200, fill:"#A8D8C0", realW:1320, realD:1200 },
+      { id:"wash",   name:"洗面 W1600",    x:3680, y:800,  w:1320, d:800,  fill:"#A8D8C0", realW:1320, realD:800  },
+      { id:"wc",     name:"トイレ",        x:3680, y:0,    w:910,  d:800,  fill:"#B8E4D0", realW:910,  realD:800  },
+    ]
+  },
+  2: {
+    label: "2階", sub: "WorkSpace・BR×2・PK・吹き抜け",
+    floorH: 2600,
+    rooms: [
+      { id:"ws",     name:"Work Space",   x:0,    y:3090, w:3080, d:3100, fill:"#F8D090", realW:3080, realD:3100 },
+      { id:"br1",    name:"BR① 6畳",     x:3080, y:3090, w:3290, d:3100, fill:"#A8C8F0", realW:3290, realD:3100 },
+      { id:"void",   name:"吹き抜け",     x:0,    y:1400, w:1820, d:1690, fill:"#D0C8F0", realW:1820, realD:1690 },
+      { id:"stairs2",name:"階段",         x:1820, y:1400, w:1260, d:2500, fill:"#D8D4CC", realW:1260, realD:2500 },
+      { id:"br2",    name:"BR② 6畳",     x:3080, y:910,  w:1820, d:2180, fill:"#A8C8F0", realW:1820, realD:2180 },
+      { id:"pk",     name:"PK 6畳",       x:0,    y:0,    w:3080, d:1400, fill:"#A8C8F0", realW:3080, realD:1400 },
+      { id:"wc2",    name:"WC",           x:3080, y:0,    w:800,  d:910,  fill:"#B8E4D0", realW:800,  realD:910  },
+    ]
+  },
+  3: {
+    label: "3階", sub: "主寝室・ルーフバルコニー・バルコニー",
+    floorH: 2600,
+    rooms: [
+      { id:"roofbal", name:"ルーフバルコニー", x:0,   y:2000, w:3890, d:4190, fill:"#C8E8A0", realW:3890, realD:4190 },
+      { id:"void3",   name:"吹き抜け",        x:0,   y:1000, w:1820, d:1000, fill:"#D0C8F0", realW:1820, realD:1000 },
+      { id:"stairs3", name:"階段",            x:1820,y:1000, w:1260, d:2000, fill:"#D8D4CC", realW:1260, realD:2000 },
+      { id:"br3",     name:"主寝室 7.5畳",   x:0,   y:0,    w:3890, d:2000, fill:"#A8C8F0", realW:3890, realD:2000 },
+      { id:"bal",     name:"バルコニー",      x:0,   y:-800, w:2000, d:800,  fill:"#C8E8A0", realW:2000, realD:800  },
+      { id:"wc3",     name:"WC",             x:3080,y:1000, w:810,  d:1000, fill:"#B8E4D0", realW:810,  realD:1000 },
+    ]
+  }
+};
+
+let curFloor = 1;
+let curView = 'split';
+let uploadFile = null;
+let chatImgData = null;
+let chatHistory = [];
+
+// =============================================
+// 2D 平面図
+// =============================================
+const SVG_W = 400, SVG_H = 400;
+const REAL_W = 6370, REAL_D = 8190;
+const PAD = 40;
+
+function toSvgX(x) { return PAD + (x / REAL_W) * (SVG_W - PAD * 2); }
+function toSvgY(y) { return PAD + ((REAL_D - y) / REAL_D) * (SVG_H - PAD * 2); }
+function toSvgW(w) { return (w / REAL_W) * (SVG_W - PAD * 2); }
+function toSvgH(d) { return (d / REAL_D) * (SVG_H - PAD * 2); }
+
+function draw2D() {
+  const svg = document.getElementById('plan-svg');
+  const fd = FLOORS[curFloor];
+  let h = '';
+
+  // grid
+  for (let x = 0; x <= REAL_W; x += 910) {
+    const px = toSvgX(x);
+    h += `<line x1="${px}" y1="${PAD}" x2="${px}" y2="${SVG_H - PAD}" stroke="#E0DDD6" stroke-width="0.5" stroke-dasharray="2 3"/>`;
+  }
+  for (let y = 0; y <= REAL_D; y += 910) {
+    const py = toSvgY(y);
+    h += `<line x1="${PAD}" y1="${py}" x2="${SVG_W - PAD}" y2="${py}" stroke="#E0DDD6" stroke-width="0.5" stroke-dasharray="2 3"/>`;
+  }
+
+  // rooms
+  fd.rooms.forEach(r => {
+    const rx = toSvgX(r.x);
+    const ry = toSvgY(r.y + r.d);
+    const rw = toSvgW(r.w);
+    const rh = toSvgH(r.d);
+    if (rh < 1) return;
+    const cx = rx + rw / 2, cy = ry + rh / 2;
+    const fs = Math.min(11, Math.max(8, Math.min(rw / r.name.length * 1.3, rh / 2.5)));
+    const isVoid = r.id.includes('void');
+    h += `<g onclick="showRoomInfo('${r.id}')" style="cursor:pointer">
+      <rect x="${rx.toFixed(1)}" y="${ry.toFixed(1)}" width="${rw.toFixed(1)}" height="${rh.toFixed(1)}"
+        fill="${r.fill}" fill-opacity="${isVoid ? 0.5 : 0.85}"
+        stroke="#444" stroke-width="1" rx="2"
+        ${isVoid ? 'stroke-dasharray="4 2"' : ''}/>
+      <text x="${cx.toFixed(1)}" y="${(cy - 4).toFixed(1)}" text-anchor="middle"
+        font-size="${fs.toFixed(1)}" font-weight="500" fill="#1A1A18">${r.name}</text>`;
+    if (rh > 22) {
+      h += `<text x="${cx.toFixed(1)}" y="${(cy + 9).toFixed(1)}" text-anchor="middle"
+        font-size="9" fill="#6B6B67">${(r.realW / 1000).toFixed(1)}×${(r.realD / 1000).toFixed(1)}m</text>`;
+    }
+    h += `</g>`;
+  });
+
+  // 外壁
+  h += `<rect x="${PAD}" y="${PAD}" width="${SVG_W - PAD * 2}" height="${SVG_H - PAD * 2}"
+    fill="none" stroke="#1A1A18" stroke-width="2.5"/>`;
+
+  // 寸法
+  h += `<line x1="${PAD}" y1="${SVG_H - 12}" x2="${SVG_W - PAD}" y2="${SVG_H - 12}" stroke="#888" stroke-width="0.5"/>`;
+  h += `<text x="${SVG_W / 2}" y="${SVG_H - 2}" text-anchor="middle" font-size="10" fill="#6B6B67">6370mm</text>`;
+  h += `<line x1="12" y1="${PAD}" x2="12" y2="${SVG_H - PAD}" stroke="#888" stroke-width="0.5"/>`;
+  h += `<text x="6" y="${SVG_H / 2}" text-anchor="middle" font-size="10" fill="#6B6B67" transform="rotate(-90 6 ${SVG_H / 2})">8190mm</text>`;
+  h += `<text x="${SVG_W - PAD - 2}" y="${PAD + 12}" text-anchor="end" font-size="10" fill="#999">NE↑ 道路</text>`;
+  h += `<text x="${PAD + 4}" y="${SVG_H - PAD - 4}" font-size="10" fill="#BA7517">☀ SW</text>`;
+
+  svg.innerHTML = h;
+}
+
+function showRoomInfo(id) {
+  const r = FLOORS[curFloor].rooms.find(x => x.id === id);
+  if (!r) return;
+  const sqm = (r.realW * r.realD / 1000000).toFixed(2);
+  const tatami = (r.realW * r.realD / 1000000 / 1.65).toFixed(1);
+  document.getElementById('room-bar').textContent =
+    `${r.name}　${(r.realW / 1000).toFixed(2)}m × ${(r.realD / 1000).toFixed(2)}m = ${sqm}㎡（${tatami}畳）`;
+}
+
+// =============================================
+// Three.js 3D
+// =============================================
+let renderer, scene, camera;
+let isDrag = false, prevX = 0, prevY = 0;
+let theta = 0.7, phi = 0.65, radius = 22;
+let animId = null;
+
+function initThree() {
+  if (!window.THREE) return;
+  const canvas = document.getElementById('three-canvas');
+  const wrap = document.getElementById('three-wrap');
+
+  renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0xECEAE4);
+
+  camera = new THREE.PerspectiveCamera(42, 1, 0.1, 500);
+  resizeThree();
+
+  scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+  const sun = new THREE.DirectionalLight(0xfff8e0, 1.1);
+  sun.position.set(10, 18, 8);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(1024, 1024);
+  scene.add(sun);
+  const fill = new THREE.DirectionalLight(0xddeeff, 0.3);
+  fill.position.set(-8, 5, -5);
+  scene.add(fill);
+
+  const ground = new THREE.Mesh(
+    new THREE.PlaneGeometry(60, 60),
+    new THREE.MeshLambertMaterial({ color: 0xC8D4B8 })
+  );
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  buildModel();
+
+  canvas.addEventListener('mousedown', e => { isDrag = true; prevX = e.clientX; prevY = e.clientY; });
+  window.addEventListener('mouseup', () => isDrag = false);
+  window.addEventListener('mousemove', e => {
+    if (!isDrag) return;
+    theta -= (e.clientX - prevX) * 0.007;
+    phi = Math.max(0.05, Math.min(1.45, phi + (e.clientY - prevY) * 0.007));
+    prevX = e.clientX; prevY = e.clientY;
+    updateCamera();
+  });
+  canvas.addEventListener('wheel', e => {
+    radius = Math.max(5, Math.min(55, radius + e.deltaY * 0.03));
+    updateCamera(); e.preventDefault();
+  }, { passive: false });
+
+  updateCamera();
+  animate();
+  document.getElementById('three-loading').style.display = 'none';
+}
+
+function resizeThree() {
+  if (!renderer || !camera) return;
+  const wrap = document.getElementById('three-wrap');
+  const W = wrap.clientWidth, H = wrap.clientHeight;
+  if (W < 1 || H < 1) return;
+  renderer.setSize(W, H);
+  camera.aspect = W / H;
+  camera.updateProjectionMatrix();
+}
+
+function updateCamera() {
+  if (!camera) return;
+  const cx = 3.0, cy = 4.5, cz = -3.5;
+  camera.position.set(
+    cx + radius * Math.sin(theta) * Math.cos(phi),
+    Math.max(0.5, radius * Math.sin(phi)),
+    cz + radius * Math.cos(theta) * Math.cos(phi)
+  );
+  camera.lookAt(cx, cy, cz);
+}
+
+function animate() {
+  animId = requestAnimationFrame(animate);
+  renderer.render(scene, camera);
+}
+
+const ROOM_COLORS_3D = {
+  ldk: 0xB8E090, deck: 0xDCCE90, ent: 0xD4C8B0,
+  stairs: 0xC8C4BC, stairs2: 0xC8C4BC, stairs3: 0xC8C4BC,
+  bath: 0x90C8A8, wash: 0x90C8A8, wc: 0xA0D4BC, wc2: 0xA0D4BC, wc3: 0xA0D4BC,
+  ws: 0xF0C070, br1: 0x90B8E0, br2: 0x90B8E0, br3: 0x90B8E0,
+  pk: 0x90B8E0, void: 0xB8B0E8, void3: 0xB8B0E8,
+  roofbal: 0xB8E090, bal: 0xB8E090,
+};
+
+function buildModel() {
+  if (!scene) return;
+  scene.children.filter(c => c.userData.isRoom).forEach(c => scene.remove(c));
+
+  const SC = 0.001;
+  const edgeMat = new THREE.LineBasicMaterial({ color: 0x88887840 });
+  let baseY = 0;
+
+  Object.values(FLOORS).forEach(fd => {
+    const fH = fd.floorH * SC;
+
+    fd.rooms.forEach(r => {
+      const isVoid = r.id.includes('void');
+      const isOutdoor = r.id.includes('deck') || r.id.includes('bal');
+      if (isVoid) return;
+
+      const rH = isOutdoor ? 0.06 : fH;
+      const col = ROOM_COLORS_3D[r.id] || 0xD0CCC0;
+      const geo = new THREE.BoxGeometry(r.realW * SC, rH, r.realD * SC);
+      const mat = new THREE.MeshLambertMaterial({
+        color: col, transparent: true, opacity: isOutdoor ? 0.55 : 0.9
+      });
+      const mesh = new THREE.Mesh(geo, mat);
+      mesh.position.set(
+        r.x * SC + r.realW * SC / 2,
+        baseY + rH / 2,
+        -(r.y * SC + r.realD * SC / 2)
+      );
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+      mesh.userData.isRoom = true;
+      scene.add(mesh);
+
+      const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo), edgeMat);
+      edges.position.copy(mesh.position);
+      edges.userData.isRoom = true;
+      scene.add(edges);
+    });
+
+    // 床スラブ
+    const sg = new THREE.BoxGeometry(REAL_W * SC, 0.08, REAL_D * SC);
+    const sm = new THREE.MeshLambertMaterial({ color: 0xB8B4A8, transparent: true, opacity: 0.3 });
+    const sl = new THREE.Mesh(sg, sm);
+    sl.position.set(REAL_W * SC / 2, baseY - 0.04, -REAL_D * SC / 2);
+    sl.userData.isRoom = true;
+    scene.add(sl);
+
+    baseY += fH;
+  });
+}
+
+// =============================================
+// View / Floor 切り替え
+// =============================================
+function setView(v) {
+  curView = v;
+  ['split', '2d', '3d'].forEach(x => {
+    document.getElementById('v-' + x).classList.toggle('active', x === v);
+  });
+  const pw = document.getElementById('plan-wrap');
+  const tw = document.getElementById('three-wrap');
+  if (v === 'split') { pw.style.display = 'flex'; tw.style.display = 'block'; }
+  else if (v === '2d') { pw.style.display = 'flex'; tw.style.display = 'none'; }
+  else { pw.style.display = 'none'; tw.style.display = 'block'; }
+  setTimeout(resizeThree, 50);
+}
+
+function setFloor(f) {
+  curFloor = f;
+  document.querySelectorAll('.ftab').forEach((b, i) => b.classList.toggle('active', i + 1 === f));
+  document.getElementById('room-bar').textContent = '部屋をクリックすると寸法を表示';
+  draw2D();
+}
+
+// =============================================
+// Upload Modal
+// =============================================
+function openUpload() {
+  document.getElementById('upload-overlay').classList.add('show');
+  uploadFile = null;
+  document.getElementById('analyze-btn').disabled = true;
+  document.getElementById('analyze-status').textContent = '';
+  document.getElementById('drop-zone').style.background = 'var(--bg)';
+}
+function closeUpload() {
+  document.getElementById('upload-overlay').classList.remove('show');
+}
+function onDrop(e) {
+  e.preventDefault();
+  document.getElementById('drop-zone').classList.remove('drag');
+  const file = e.dataTransfer.files[0];
+  if (file && file.type.startsWith('image/')) selectUploadFile(file);
+}
+function onFileSelect(input) {
+  if (input.files[0]) selectUploadFile(input.files[0]);
+}
+function selectUploadFile(file) {
+  uploadFile = file;
+  document.getElementById('analyze-status').textContent = `選択済み: ${file.name}`;
+  document.getElementById('analyze-btn').disabled = false;
+  const dz = document.getElementById('drop-zone');
+  dz.style.background = 'var(--green-light)';
+  dz.querySelector('p').textContent = file.name;
+}
+
+async function analyzeImage() {
+  if (!uploadFile) return;
+  const btn = document.getElementById('analyze-btn');
+  const status = document.getElementById('analyze-status');
+  btn.disabled = true;
+  status.textContent = 'Claude Vision で解析中...';
+
+  const floorTarget = document.getElementById('floor-select').value;
+
+  try {
+    const base64 = await fileToBase64(uploadFile);
+    const mediaType = uploadFile.type || 'image/jpeg';
+
+    const systemPrompt = `あなたは建築間取り図の解析AIです。
+手書きの間取り図画像を解析し、部屋情報をJSONで返してください。
+
+返却形式（必ずこの形式のみ、前後の説明不要）:
+{
+  "floor": 1,
+  "floorH": 2800,
+  "rooms": [
+    {"id":"ldk","name":"LDK","x":0,"y":0,"w":3680,"d":5500,"realW":3680,"realD":5500,"fill":"#C8E8A0"}
+  ]
+}
+
+ルール:
+- 単位はmm。原点は建物南西角。北東が道路側（上方向）
+- x/yは部屋の南西角の座標
+- w=東西幅、d=南北奥行き
+- fill は部屋タイプに応じて: LDK系=#C8E8A0, 寝室=#A8C8F0, 水回り=#A8D8C0, 階段/廊下=#D8D4CC, デッキ/バルコニー=#C8E8A0, 吹き抜け=#D0C8F0
+- 図面に書かれた数値を最大限読み取ること
+- 読み取れない寸法は隣接する部屋との関係から推定すること`;
+
+    const userMsg = floorTarget === 'all'
+      ? 'この間取り図の全フロアを解析してください。'
+      : `この間取り図の${floorTarget}階を解析してください。`;
+
+    const res = await callClaude(systemPrompt, [
+      {
+        role: 'user',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+          { type: 'text', text: userMsg }
+        ]
+      }
+    ]);
+
+    const clean = res.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(clean);
+
+    if (parsed.floor && parsed.rooms) {
+      FLOORS[parsed.floor].rooms = parsed.rooms;
+      if (parsed.floorH) FLOORS[parsed.floor].floorH = parsed.floorH;
+      setFloor(parsed.floor);
+      buildModel();
+      status.textContent = `✓ ${parsed.floor}階を反映しました（${parsed.rooms.length}部屋）`;
+      addChatMsg('ai', `${parsed.floor}階の間取りを画像から読み取りました！${parsed.rooms.length}部屋を検出して3Dに反映しています。\n\n修正したい点があればチャットで教えてください。`);
+      setTimeout(closeUpload, 1500);
+    } else {
+      status.textContent = '解析結果の形式が不正でした。再度お試しください。';
+      btn.disabled = false;
+    }
+  } catch (err) {
+    console.error(err);
+    status.textContent = 'エラー: ' + err.message;
+    btn.disabled = false;
+  }
+}
+
+// =============================================
+// Chat
+// =============================================
+function addChatMsg(role, text, imgSrc) {
+  const body = document.getElementById('chat-body');
+  const div = document.createElement('div');
+  div.className = 'msg ' + role;
+  let inner = '';
+  if (imgSrc) inner += `<img class="msg-img" src="${imgSrc}" alt="添付画像">`;
+  inner += `<div class="msg-bubble">${escHtml(text)}</div>`;
+  inner += `<div class="msg-time">${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}</div>`;
+  div.innerHTML = inner;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+  return div;
+}
+
+function addTyping() {
+  const body = document.getElementById('chat-body');
+  const div = document.createElement('div');
+  div.className = 'msg ai';
+  div.id = 'typing-indicator';
+  div.innerHTML = `<div class="msg-bubble" style="padding:6px 12px"><div class="typing"><span></span><span></span><span></span></div></div>`;
+  body.appendChild(div);
+  body.scrollTop = body.scrollHeight;
+}
+
+function removeTyping() {
+  document.getElementById('typing-indicator')?.remove();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+let chatImgBase64 = null, chatImgMime = null;
+
+function onChatImg(input) {
+  const file = input.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    chatImgBase64 = e.target.result.split(',')[1];
+    chatImgMime = file.type || 'image/jpeg';
+    chatImgData = e.target.result;
+    document.getElementById('chat-input').placeholder = '図面を添付済み。修正内容を入力...';
+  };
+  reader.readAsDataURL(file);
+}
+
+async function sendChat() {
+  const inp = document.getElementById('chat-input');
+  const text = inp.value.trim();
+  if (!text && !chatImgBase64) return;
+
+  const displayText = text || '（図面を添付しました）';
+  addChatMsg('user', displayText, chatImgData);
+  inp.value = '';
+  document.getElementById('send-btn').disabled = true;
+  addTyping();
+
+  const floorsJson = JSON.stringify(FLOORS, null, 2);
+  const system = `あなたは建築間取り修正アシスタントです。
+現在の間取りデータ（単位mm、JSON）:
+${floorsJson}
+
+ユーザーの要求に応じてデータを修正し、以下の形式で返してください:
+1行目: JSON（全階含む）
+2行目: ---
+3行目以降: 変更内容の説明（日本語・2〜3文）
+
+JSONのみの例:
+{"1":{...},"2":{...},"3":{...}}
+---
+変更内容: LDKを3680×6000mmに拡張し、ウッドデッキを1500mm奥行きに縮小しました。`;
+
+  const userContent = [];
+  if (chatImgBase64) {
+    userContent.push({ type: 'image', source: { type: 'base64', media_type: chatImgMime, data: chatImgBase64 } });
+  }
+  userContent.push({ type: 'text', text: displayText });
+
+  chatHistory.push({ role: 'user', content: userContent });
+
+  try {
+    const raw = await callClaude(system, chatHistory);
+    chatHistory.push({ role: 'assistant', content: raw });
+
+    const parts = raw.split('---');
+    const desc = (parts[1] || '').replace('変更内容:', '').trim();
+
+    try {
+      const clean = parts[0].replace(/```json|```/g, '').trim();
+      const parsed = JSON.parse(clean);
+      let updated = false;
+      [1, 2, 3].forEach(f => {
+        if (parsed[f] || parsed[String(f)]) {
+          const d = parsed[f] || parsed[String(f)];
+          if (d.rooms) { Object.assign(FLOORS[f], d); updated = true; }
+        }
+      });
+      if (updated) { draw2D(); buildModel(); }
+    } catch (_) {}
+
+    removeTyping();
+    addChatMsg('ai', desc || raw);
+  } catch (err) {
+    removeTyping();
+    addChatMsg('ai', 'エラーが発生しました: ' + err.message);
+  }
+
+  document.getElementById('send-btn').disabled = false;
+  chatImgBase64 = null; chatImgMime = null; chatImgData = null;
+  inp.placeholder = '修正内容を入力... (Shift+Enterで改行)';
+}
+
+document.getElementById('chat-input').addEventListener('keydown', e => {
+  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendChat(); }
+});
+
+// =============================================
+// Claude API
+// =============================================
+async function callClaude(system, messages) {
+  const res = await fetch('/.netlify/functions/claude', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system, messages })
+  });
+  if (!res.ok) throw new Error('API Error: ' + res.status);
+  const data = await res.json();
+  return data.content?.map(c => c.text || '').join('') || '';
+}
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = e => resolve(e.target.result.split(',')[1]);
+    r.onerror = reject;
+    r.readAsDataURL(file);
+  });
+}
+
+// =============================================
+// Init
+// =============================================
+window.addEventListener('resize', () => { resizeThree(); draw2D(); });
+
+// 初期メッセージ
+addChatMsg('ai', `A棟の間取り（1〜3階）を読み込みました。
+
+【使い方】
+📷 図面を読み込む → 手書き図面をアップロードしてVisionで自動解析
+💬 チャット → 修正内容を入力（例：「LDKを広くしたい」）
+📎 図面を添付 → チャットに画像を添付して指示
+
+何でも修正できます！`);
+
+draw2D();
+
+// Three.js 初期化
+setTimeout(() => {
+  if (window.THREE) initThree();
+  else {
+    let t = 0;
+    const iv = setInterval(() => {
+      if (window.THREE) { clearInterval(iv); initThree(); }
+      if (++t > 30) clearInterval(iv);
+    }, 300);
+  }
+}, 100);
+</script>
+</body>
+</html>
