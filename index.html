@@ -1,0 +1,515 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>間取り3Dビューア</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#F5F3EE;--sur:#fff;--bdr:#E0DDD6;--tx:#1A1A18;--tx2:#6B6B67;--gr:#3B6D11;--grl:#EAF3DE;--bl:#185FA5;--bll:#E6F1FB}
+body{font-family:'Hiragino Sans','Noto Sans JP',sans-serif;background:var(--bg);color:var(--tx);height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* API設定モーダル */
+#api-modal{display:flex;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:200;align-items:center;justify-content:center}
+#api-box{background:var(--sur);border-radius:12px;padding:28px;width:420px;max-width:92vw}
+#api-box h2{font-size:16px;font-weight:600;margin-bottom:8px}
+#api-box p{font-size:12px;color:var(--tx2);margin-bottom:16px;line-height:1.6}
+#api-key-input{width:100%;padding:8px 10px;font-size:13px;border:1px solid var(--bdr);border-radius:8px;margin-bottom:10px;outline:none}
+#api-save{width:100%;padding:10px;font-size:13px;font-weight:500;border:none;border-radius:8px;background:var(--gr);color:#fff;cursor:pointer}
+#api-save:hover{opacity:.9}
+
+/* Header */
+#hdr{display:flex;align-items:center;gap:10px;padding:0 14px;height:46px;background:var(--sur);border-bottom:1px solid var(--bdr);flex-shrink:0}
+#hdr h1{font-size:13px;font-weight:600}
+#hdr small{font-size:11px;color:var(--tx2)}
+.hb{padding:3px 11px;font-size:11px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg);color:var(--tx2);cursor:pointer}
+.hb.on{background:var(--tx);color:#fff;border-color:var(--tx)}
+#key-btn{margin-left:auto;padding:3px 11px;font-size:11px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg);color:var(--tx2);cursor:pointer}
+
+/* Main */
+#main{display:flex;flex:1;overflow:hidden}
+#left{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+
+/* Floor tabs */
+#ftabs{display:flex;gap:4px;padding:6px 10px;background:var(--sur);border-bottom:1px solid var(--bdr);flex-shrink:0;align-items:center}
+.ft{padding:3px 12px;font-size:11px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg);color:var(--tx2);cursor:pointer}
+.ft.on{background:var(--tx);color:#fff;border-color:var(--tx)}
+#upbtn{margin-left:auto;padding:4px 11px;font-size:11px;border-radius:6px;border:1px dashed var(--gr);background:var(--grl);color:var(--gr);cursor:pointer}
+
+/* Views */
+#vwrap{display:flex;flex:1;overflow:hidden;min-height:0}
+#planwrap{flex:1;overflow:auto;padding:12px;background:var(--bg);display:flex;align-items:flex-start;justify-content:center}
+#threewrap{flex:1;position:relative;border-left:1px solid var(--bdr);background:#ECEAE4;min-height:0}
+#threecanvas{width:100%;height:100%;display:block}
+#threeloading{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;background:#ECEAE4;font-size:12px;color:var(--tx2)}
+.spin{width:22px;height:22px;border:2px solid var(--bdr);border-top-color:var(--gr);border-radius:50%;animation:sp .8s linear infinite}
+@keyframes sp{to{transform:rotate(360deg)}}
+#hint{position:absolute;bottom:6px;right:6px;font-size:10px;color:var(--tx2);background:rgba(255,255,255,.8);padding:2px 7px;border-radius:4px;border:1px solid var(--bdr)}
+
+#roombar{height:26px;padding:0 10px;display:flex;align-items:center;font-size:11px;color:var(--tx2);background:var(--sur);border-top:1px solid var(--bdr);flex-shrink:0}
+
+/* Chat */
+#chat{width:290px;flex-shrink:0;display:flex;flex-direction:column;background:var(--sur);border-left:1px solid var(--bdr)}
+#chdr{padding:8px 12px;border-bottom:1px solid var(--bdr);font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px}
+#chdr span{font-size:10px;font-weight:400;color:var(--tx2)}
+#cbody{flex:1;overflow-y:auto;padding:10px 8px;display:flex;flex-direction:column;gap:8px}
+.mu{align-self:flex-end;max-width:90%}
+.ma{align-self:flex-start;max-width:90%}
+.mb{padding:7px 10px;border-radius:10px;font-size:11px;line-height:1.65;white-space:pre-wrap}
+.mu .mb{background:var(--gr);color:#fff;border-radius:10px 10px 2px 10px}
+.ma .mb{background:var(--bg);border:1px solid var(--bdr);border-radius:10px 10px 10px 2px}
+.mt{font-size:10px;color:var(--tx2);margin-top:2px;text-align:right}
+.typing{display:flex;gap:3px;align-items:center;padding:8px 10px}
+.typing i{width:5px;height:5px;background:var(--tx2);border-radius:50%;animation:bc .9s ease-in-out infinite}
+.typing i:nth-child(2){animation-delay:.15s}
+.typing i:nth-child(3){animation-delay:.3s}
+@keyframes bc{0%,80%,100%{transform:translateY(0)}40%{transform:translateY(-5px)}}
+#cfoot{padding:7px 8px;border-top:1px solid var(--bdr);display:flex;flex-direction:column;gap:5px}
+#cinput{width:100%;padding:7px 9px;font-size:11px;border:1px solid var(--bdr);border-radius:8px;background:var(--bg);color:var(--tx);resize:none;outline:none;font-family:inherit}
+#cinput:focus{border-color:var(--gr)}
+#cactions{display:flex;gap:5px;align-items:center}
+#imgbtn{padding:4px 9px;font-size:11px;border-radius:6px;border:1px solid var(--bdr);background:var(--bg);color:var(--tx2);cursor:pointer}
+#sendbtn{margin-left:auto;padding:4px 14px;font-size:11px;border-radius:6px;border:none;background:var(--gr);color:#fff;cursor:pointer}
+#sendbtn:disabled{opacity:.4;cursor:default}
+
+/* Upload modal */
+#umodal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:100;align-items:center;justify-content:center}
+#umodal.show{display:flex}
+#ubox{background:var(--sur);border-radius:12px;padding:22px;width:460px;max-width:92vw}
+#ubox h2{font-size:14px;font-weight:600;margin-bottom:6px}
+#ubox p{font-size:11px;color:var(--tx2);margin-bottom:14px;line-height:1.6}
+#dropzone{border:2px dashed var(--bdr);border-radius:10px;padding:28px;text-align:center;cursor:pointer;background:var(--bg);transition:all .15s}
+#dropzone.drag{border-color:var(--gr);background:var(--grl)}
+#dropzone p{font-size:12px;color:var(--tx2);margin-top:8px}
+#flsel{display:flex;gap:8px;margin-top:14px;align-items:center}
+#flsel label{font-size:11px;color:var(--tx2)}
+#flsel select{flex:1;padding:5px 8px;font-size:11px;border:1px solid var(--bdr);border-radius:6px;background:var(--bg)}
+#astat{font-size:11px;color:var(--tx2);margin-top:8px;min-height:16px}
+#abtn{width:100%;padding:9px;font-size:13px;font-weight:500;border:none;border-radius:8px;background:var(--gr);color:#fff;cursor:pointer;margin-top:14px}
+#abtn:disabled{opacity:.5;cursor:default}
+#cbtn2{width:100%;padding:8px;font-size:12px;border-radius:8px;border:1px solid var(--bdr);background:transparent;color:var(--tx2);cursor:pointer;margin-top:7px}
+</style>
+</head>
+<body>
+
+<!-- API設定モーダル -->
+<div id="api-modal">
+  <div id="api-box">
+    <h2>🔑 Claude APIキーを設定</h2>
+    <p>FXアプリと同じAnthropicのAPIキー（sk-ant-...）を入力してください。<br>キーはブラウザのローカルストレージに保存されます。</p>
+    <input id="api-key-input" type="password" placeholder="sk-ant-api03-...">
+    <button id="api-save" onclick="saveApiKey()">保存してアプリを起動</button>
+  </div>
+</div>
+
+<!-- Header -->
+<div id="hdr">
+  <h1>間取り3Dビューア</h1>
+  <small>A棟 阿佐谷北2-22-18</small>
+  <div style="flex:1"></div>
+  <button class="hb on" id="v-split" onclick="setView('split')">分割</button>
+  <button class="hb" id="v-2d" onclick="setView('2d')">平面図</button>
+  <button class="hb" id="v-3d" onclick="setView('3d')">3D</button>
+  <button id="key-btn" onclick="resetApiKey()">🔑 APIキー変更</button>
+</div>
+
+<div id="main">
+  <div id="left">
+    <div id="ftabs">
+      <button class="ft on" onclick="setFloor(1)">1階</button>
+      <button class="ft" onclick="setFloor(2)">2階</button>
+      <button class="ft" onclick="setFloor(3)">3階</button>
+      <button id="upbtn" onclick="openUpload()">📷 図面を読み込む</button>
+    </div>
+    <div id="vwrap">
+      <div id="planwrap"><svg id="plansvg" width="380" height="390"></svg></div>
+      <div id="threewrap">
+        <canvas id="threecanvas"></canvas>
+        <div id="threeloading"><div class="spin"></div><span>3D読み込み中...</span></div>
+        <div id="hint">ドラッグ:回転　ホイール:ズーム</div>
+      </div>
+    </div>
+    <div id="roombar">部屋をクリックすると寸法を表示</div>
+  </div>
+
+  <div id="chat">
+    <div id="chdr">修正チャット <span>Claude AI</span></div>
+    <div id="cbody"></div>
+    <div id="cfoot">
+      <textarea id="cinput" rows="2" placeholder="修正内容を入力... (Enterで送信)"></textarea>
+      <div id="cactions">
+        <button id="imgbtn" onclick="document.getElementById('chatimg').click()">📎 図面を添付</button>
+        <input id="chatimg" type="file" accept="image/*" style="display:none" onchange="onChatImg(this)">
+        <button id="sendbtn" onclick="sendChat()">送信</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Upload modal -->
+<div id="umodal">
+  <div id="ubox">
+    <h2>手書き図面を読み込む</h2>
+    <p>手書きの間取り図写真をアップロードするとClaude Visionが自動解析して3Dに反映します。</p>
+    <div id="dropzone" onclick="document.getElementById('fileinput').click()"
+         ondragover="event.preventDefault();this.classList.add('drag')"
+         ondragleave="this.classList.remove('drag')"
+         ondrop="onDrop(event)">
+      <div style="font-size:32px">📄</div>
+      <p>クリックまたはドラッグ&ドロップ</p>
+      <p style="font-size:10px;margin-top:4px">JPG / PNG / HEIC 対応</p>
+    </div>
+    <input id="fileinput" type="file" accept="image/*" style="display:none" onchange="onFileSelect(this)">
+    <div id="flsel">
+      <label>対象階：</label>
+      <select id="floorsel">
+        <option value="1">1階</option>
+        <option value="2">2階</option>
+        <option value="3">3階</option>
+      </select>
+    </div>
+    <div id="astat"></div>
+    <button id="abtn" onclick="analyzeImg()" disabled>解析して3Dに反映</button>
+    <button id="cbtn2" onclick="closeUpload()">キャンセル</button>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// APIキー管理
+// ============================================================
+let API_KEY = localStorage.getItem('madori_api_key') || '';
+
+function saveApiKey() {
+  const v = document.getElementById('api-key-input').value.trim();
+  if (!v.startsWith('sk-')) { alert('APIキーはsk-で始まる文字列を入力してください'); return; }
+  API_KEY = v;
+  localStorage.setItem('madori_api_key', v);
+  document.getElementById('api-modal').style.display = 'none';
+  initApp();
+}
+
+function resetApiKey() {
+  localStorage.removeItem('madori_api_key');
+  API_KEY = '';
+  document.getElementById('api-modal').style.display = 'flex';
+}
+
+// ============================================================
+// 間取りデータ
+// ============================================================
+const FLOORS = {
+  1:{label:"1階",flH:2800,rooms:[
+    {id:"ldk",    name:"LDK",         x:0,   y:0,   w:3680,d:5500,fill:"#C8E8A0"},
+    {id:"deck",   name:"デッキ",       x:0,   y:5500,w:3680,d:1200,fill:"#E8D9A0"},
+    {id:"ent",    name:"玄関",         x:3680,y:5500,w:2690,d:1200,fill:"#E0D8C8"},
+    {id:"stairs", name:"階段",         x:3680,y:2800,w:1320,d:2700,fill:"#D8D4CC"},
+    {id:"bath",   name:"浴室",         x:3680,y:1600,w:1320,d:1200,fill:"#A8D8C0"},
+    {id:"wash",   name:"洗面W1600",    x:3680,y:800, w:1320,d:800, fill:"#A8D8C0"},
+    {id:"wc",     name:"トイレ",       x:3680,y:0,   w:910, d:800, fill:"#B8E4D0"},
+  ]},
+  2:{label:"2階",flH:2600,rooms:[
+    {id:"ws",     name:"WorkSpace",   x:0,   y:3090,w:3080,d:3100,fill:"#F8D090"},
+    {id:"br1",    name:"BR① 6畳",    x:3080,y:3090,w:3290,d:3100,fill:"#A8C8F0"},
+    {id:"void",   name:"吹き抜け",    x:0,   y:1400,w:1820,d:1690,fill:"#D0C8F0"},
+    {id:"stairs2",name:"階段",        x:1820,y:1400,w:1260,d:2500,fill:"#D8D4CC"},
+    {id:"br2",    name:"BR② 6畳",    x:3080,y:910, w:1820,d:2180,fill:"#A8C8F0"},
+    {id:"pk",     name:"PK 6畳",      x:0,   y:0,   w:3080,d:1400,fill:"#A8C8F0"},
+    {id:"wc2",    name:"WC",          x:3080,y:0,   w:800, d:910, fill:"#B8E4D0"},
+  ]},
+  3:{label:"3階",flH:2600,rooms:[
+    {id:"roofbal",name:"ルーフBal",   x:0,   y:2000,w:3890,d:4190,fill:"#C8E8A0"},
+    {id:"void3",  name:"吹き抜け",    x:0,   y:1000,w:1820,d:1000,fill:"#D0C8F0"},
+    {id:"stairs3",name:"階段",        x:1820,y:1000,w:1260,d:2000,fill:"#D8D4CC"},
+    {id:"br3",    name:"主寝室7.5畳", x:0,   y:0,   w:3890,d:2000,fill:"#A8C8F0"},
+    {id:"bal",    name:"バルコニー",  x:0,   y:-800,w:2000,d:800, fill:"#C8E8A0"},
+    {id:"wc3",    name:"WC",          x:3080,y:1000,w:810, d:1000,fill:"#B8E4D0"},
+  ]}
+};
+
+const RW=6370,RD=8190,PAD=38,SW=380,SH=390;
+let curF=1,curV='split';
+
+function px(x){return PAD+(x/RW)*(SW-PAD*2)}
+function py(y){return PAD+((RD-y)/RD)*(SH-PAD*2)}
+function pw(w){return(w/RW)*(SW-PAD*2)}
+function ph(d){return(Math.abs(d)/RD)*(SH-PAD*2)}
+
+function draw2D(){
+  const fd=FLOORS[curF]; let h='';
+  for(let x=0;x<=RW;x+=910){const p=px(x);h+=`<line x1="${p}" y1="${PAD}" x2="${p}" y2="${SH-PAD}" stroke="#E0DDD6" stroke-width="0.5" stroke-dasharray="2 3"/>`;}
+  for(let y=0;y<=RD;y+=910){const p=py(y);h+=`<line x1="${PAD}" y1="${p}" x2="${SW-PAD}" y2="${p}" stroke="#E0DDD6" stroke-width="0.5" stroke-dasharray="2 3"/>`;}
+  fd.rooms.forEach(r=>{
+    const rx=px(r.x),ry=py(r.y+r.d),rw=pw(r.w),rh=ph(r.d);
+    if(rh<1)return;
+    const cx=rx+rw/2,cy=ry+rh/2;
+    const fs=Math.min(11,Math.max(8,Math.min(rw/r.name.length*1.2,rh/2.2)));
+    const isv=r.id.includes('void');
+    h+=`<g onclick="showInfo('${r.id}')" style="cursor:pointer">
+      <rect x="${rx.toFixed(1)}" y="${ry.toFixed(1)}" width="${rw.toFixed(1)}" height="${rh.toFixed(1)}"
+        fill="${r.fill}" fill-opacity="${isv?.5:.85}" stroke="#444" stroke-width="1" rx="2"${isv?' stroke-dasharray="4 2"':''}/>
+      <text x="${cx.toFixed(1)}" y="${(cy-3).toFixed(1)}" text-anchor="middle" font-size="${fs.toFixed(1)}" font-weight="500" fill="#1A1A18">${r.name}</text>
+      ${rh>20?`<text x="${cx.toFixed(1)}" y="${(cy+9).toFixed(1)}" text-anchor="middle" font-size="9" fill="#6B6B67">${(r.w/1000).toFixed(1)}×${(Math.abs(r.d)/1000).toFixed(1)}m</text>`:''}
+    </g>`;
+  });
+  h+=`<rect x="${PAD}" y="${PAD}" width="${SW-PAD*2}" height="${SH-PAD*2}" fill="none" stroke="#1A1A18" stroke-width="2.5"/>`;
+  h+=`<text x="${SW/2}" y="${SH-4}" text-anchor="middle" font-size="10" fill="#888">6370mm</text>`;
+  h+=`<text x="8" y="${SH/2}" text-anchor="middle" font-size="10" fill="#888" transform="rotate(-90 8 ${SH/2})">8190mm</text>`;
+  h+=`<text x="${SW-PAD-2}" y="${PAD+12}" text-anchor="end" font-size="10" fill="#aaa">NE↑道路</text>`;
+  h+=`<text x="${PAD+4}" y="${SH-PAD-4}" font-size="10" fill="#BA7517">☀SW</text>`;
+  document.getElementById('plansvg').innerHTML=h;
+}
+
+function showInfo(id){
+  const r=FLOORS[curF].rooms.find(x=>x.id===id);
+  if(!r)return;
+  const s=(r.w*Math.abs(r.d)/1e6).toFixed(2);
+  const t=(r.w*Math.abs(r.d)/1e6/1.65).toFixed(1);
+  document.getElementById('roombar').textContent=`${r.name}　${(r.w/1000).toFixed(2)}m × ${(Math.abs(r.d)/1000).toFixed(2)}m = ${s}㎡（${t}畳）`;
+}
+
+function setFloor(f){
+  curF=f;
+  document.querySelectorAll('.ft').forEach((b,i)=>b.classList.toggle('on',i+1===f));
+  document.getElementById('roombar').textContent='部屋をクリックすると寸法を表示';
+  draw2D();
+}
+
+function setView(v){
+  curV=v;
+  ['split','2d','3d'].forEach(x=>document.getElementById('v-'+x).classList.toggle('on',x===v));
+  const pw=document.getElementById('planwrap'),tw=document.getElementById('threewrap');
+  if(v==='split'){pw.style.display='flex';tw.style.display='block';}
+  else if(v==='2d'){pw.style.display='flex';tw.style.display='none';}
+  else{pw.style.display='none';tw.style.display='block';}
+  setTimeout(resizeThree,60);
+}
+
+// ============================================================
+// Three.js
+// ============================================================
+let renderer,scene,camera,isDrag=false,prevX=0,prevY=0,theta=.7,phi=.65,rad=22;
+
+const C3D={ldk:0xB8E090,deck:0xDCCE90,ent:0xD4C8B0,stairs:0xC8C4BC,stairs2:0xC8C4BC,stairs3:0xC8C4BC,
+  bath:0x90C8A8,wash:0x90C8A8,wc:0xA0D4BC,wc2:0xA0D4BC,wc3:0xA0D4BC,
+  ws:0xF0C070,br1:0x90B8E0,br2:0x90B8E0,br3:0x90B8E0,pk:0x90B8E0,
+  void:0xB8B0E8,void3:0xB8B0E8,roofbal:0xB8E090,bal:0xB8E090};
+
+function initThree(){
+  if(!window.THREE)return;
+  const cv=document.getElementById('threecanvas'),wrap=document.getElementById('threewrap');
+  renderer=new THREE.WebGLRenderer({canvas:cv,antialias:true});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+  renderer.shadowMap.enabled=true;
+  scene=new THREE.Scene();scene.background=new THREE.Color(0xECEAE4);
+  camera=new THREE.PerspectiveCamera(42,1,.1,500);
+  resizeThree();
+  scene.add(new THREE.AmbientLight(0xffffff,.55));
+  const sun=new THREE.DirectionalLight(0xfff8e0,1.1);sun.position.set(10,18,8);sun.castShadow=true;scene.add(sun);
+  scene.add(Object.assign(new THREE.DirectionalLight(0xddeeff,.3),{position:new THREE.Vector3(-8,5,-5)}));
+  const gnd=new THREE.Mesh(new THREE.PlaneGeometry(60,60),new THREE.MeshLambertMaterial({color:0xC8D4B8}));
+  gnd.rotation.x=-Math.PI/2;gnd.receiveShadow=true;scene.add(gnd);
+  buildModel();
+  cv.addEventListener('mousedown',e=>{isDrag=true;prevX=e.clientX;prevY=e.clientY;});
+  window.addEventListener('mouseup',()=>isDrag=false);
+  window.addEventListener('mousemove',e=>{
+    if(!isDrag)return;
+    theta-=(e.clientX-prevX)*.007;phi=Math.max(.05,Math.min(1.45,phi+(e.clientY-prevY)*.007));
+    prevX=e.clientX;prevY=e.clientY;updateCam();
+  });
+  cv.addEventListener('wheel',e=>{rad=Math.max(5,Math.min(55,rad+e.deltaY*.03));updateCam();e.preventDefault();},{passive:false});
+  updateCam();
+  (function loop(){requestAnimationFrame(loop);renderer.render(scene,camera);})();
+  document.getElementById('threeloading').style.display='none';
+}
+
+function resizeThree(){
+  if(!renderer||!camera)return;
+  const w=document.getElementById('threewrap');
+  const W=w.clientWidth,H=w.clientHeight;
+  if(W<1||H<1)return;
+  renderer.setSize(W,H);camera.aspect=W/H;camera.updateProjectionMatrix();
+}
+
+function updateCam(){
+  if(!camera)return;
+  const cx=3,cy=4.5,cz=-3.5;
+  camera.position.set(cx+rad*Math.sin(theta)*Math.cos(phi),Math.max(.5,rad*Math.sin(phi)),cz+rad*Math.cos(theta)*Math.cos(phi));
+  camera.lookAt(cx,cy,cz);
+}
+
+function buildModel(){
+  if(!scene)return;
+  scene.children.filter(c=>c.userData.r).forEach(c=>scene.remove(c));
+  const SC=.001,em=new THREE.LineBasicMaterial({color:0x88887840});
+  let baseY=0;
+  Object.values(FLOORS).forEach(fd=>{
+    const fH=fd.flH*SC;
+    fd.rooms.forEach(r=>{
+      if(r.id.includes('void'))return;
+      const isOut=r.id.includes('deck')||r.id.includes('bal');
+      const rH=isOut?.06:fH;
+      const geo=new THREE.BoxGeometry(r.w*SC,rH,Math.abs(r.d)*SC);
+      const mat=new THREE.MeshLambertMaterial({color:C3D[r.id]||0xD0CCC0,transparent:true,opacity:isOut?.55:.9});
+      const m=new THREE.Mesh(geo,mat);
+      m.position.set(r.x*SC+r.w*SC/2,baseY+rH/2,-(r.y*SC+Math.abs(r.d)*SC/2));
+      m.castShadow=true;m.receiveShadow=true;m.userData.r=true;scene.add(m);
+      const el=new THREE.LineSegments(new THREE.EdgesGeometry(geo),em);
+      el.position.copy(m.position);el.userData.r=true;scene.add(el);
+    });
+    const sg=new THREE.Mesh(new THREE.BoxGeometry(RW*SC,.08,RD*SC),new THREE.MeshLambertMaterial({color:0xB8B4A8,transparent:true,opacity:.25}));
+    sg.position.set(RW*SC/2,baseY-.04,-RD*SC/2);sg.userData.r=true;scene.add(sg);
+    baseY+=fH;
+  });
+}
+
+// ============================================================
+// 画像アップロード解析
+// ============================================================
+let uploadFile=null;
+
+function openUpload(){document.getElementById('umodal').classList.add('show');uploadFile=null;document.getElementById('abtn').disabled=true;document.getElementById('astat').textContent='';}
+function closeUpload(){document.getElementById('umodal').classList.remove('show');}
+function onDrop(e){e.preventDefault();document.getElementById('dropzone').classList.remove('drag');const f=e.dataTransfer.files[0];if(f&&f.type.startsWith('image/'))setUploadFile(f);}
+function onFileSelect(i){if(i.files[0])setUploadFile(i.files[0]);}
+function setUploadFile(f){
+  uploadFile=f;
+  document.getElementById('astat').textContent=`選択済み: ${f.name}`;
+  document.getElementById('abtn').disabled=false;
+  document.getElementById('dropzone').style.background='var(--grl)';
+}
+
+async function analyzeImg(){
+  if(!uploadFile)return;
+  const btn=document.getElementById('abtn'),stat=document.getElementById('astat');
+  btn.disabled=true;stat.textContent='Claude Visionで解析中...';
+  const floorTarget=document.getElementById('floorsel').value;
+  try{
+    const b64=await toB64(uploadFile);
+    const mime=uploadFile.type||'image/jpeg';
+    const sys=`あなたは建築間取り図の解析AIです。手書きの間取り図画像を解析し、部屋情報をJSONのみで返してください。
+形式:{"floor":1,"flH":2800,"rooms":[{"id":"ldk","name":"LDK","x":0,"y":0,"w":3680,"d":5500,"fill":"#C8E8A0"}]}
+単位mm。原点は建物南西角。北東が道路側。fill: LDK=#C8E8A0,寝室=#A8C8F0,水回り=#A8D8C0,階段=#D8D4CC,デッキ/Bal=#C8E8A0,吹き抜け=#D0C8F0`;
+    const raw=await callClaude(sys,[{role:'user',content:[
+      {type:'image',source:{type:'base64',media_type:mime,data:b64}},
+      {type:'text',text:`${floorTarget}階の間取りを解析してJSONのみ返してください。`}
+    ]}]);
+    const parsed=JSON.parse(raw.replace(/```json|```/g,'').trim());
+    if(parsed.floor&&parsed.rooms){
+      FLOORS[parsed.floor].rooms=parsed.rooms;
+      if(parsed.flH)FLOORS[parsed.floor].flH=parsed.flH;
+      setFloor(parsed.floor);buildModel();
+      stat.textContent=`✓ ${parsed.floor}階を反映（${parsed.rooms.length}部屋）`;
+      addMsg('ai',`${parsed.floor}階の間取りを画像から読み取りました！${parsed.rooms.length}部屋を検出して3Dに反映しました。\n修正があればチャットで教えてください。`);
+      setTimeout(closeUpload,1500);
+    }else{stat.textContent='解析結果の形式が不正です。再度お試しください。';btn.disabled=false;}
+  }catch(e){stat.textContent='エラー: '+e.message;btn.disabled=false;}
+}
+
+// ============================================================
+// Chat
+// ============================================================
+let chatHistory=[],chatImgB64=null,chatImgMime=null,chatImgSrc=null;
+
+function addMsg(role,text,img){
+  const body=document.getElementById('cbody');
+  const d=document.createElement('div');d.className='m'+role[0];
+  const t=new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'});
+  d.innerHTML=(img?`<img src="${img}" style="max-width:130px;border-radius:6px;margin-bottom:4px;display:block">`:'')
+    +`<div class="mb">${text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}</div>`
+    +`<div class="mt">${t}</div>`;
+  body.appendChild(d);body.scrollTop=body.scrollHeight;
+}
+
+function addTyping(){
+  const body=document.getElementById('cbody');
+  const d=document.createElement('div');d.className='ma';d.id='typ';
+  d.innerHTML='<div class="mb"><div class="typing"><i></i><i></i><i></i></div></div>';
+  body.appendChild(d);body.scrollTop=body.scrollHeight;
+}
+
+function onChatImg(input){
+  const f=input.files[0];if(!f)return;
+  const r=new FileReader();
+  r.onload=e=>{chatImgB64=e.target.result.split(',')[1];chatImgMime=f.type||'image/jpeg';chatImgSrc=e.target.result;
+    document.getElementById('cinput').placeholder='図面添付済み。修正内容を入力...';};
+  r.readAsDataURL(f);
+}
+
+async function sendChat(){
+  const inp=document.getElementById('cinput');
+  const txt=inp.value.trim();if(!txt&&!chatImgB64)return;
+  const disp=txt||'（図面を添付しました）';
+  addMsg('user',disp,chatImgSrc);inp.value='';
+  document.getElementById('sendbtn').disabled=true;addTyping();
+
+  const sys=`あなたは建築間取り修正アシスタントです。
+現在の間取りデータ(mm):${JSON.stringify(FLOORS)}
+修正後を以下の形式で返してください:
+{"1":{...},"2":{...},"3":{...}}
+---
+変更内容: （日本語2〜3文）`;
+
+  const uc=[];
+  if(chatImgB64)uc.push({type:'image',source:{type:'base64',media_type:chatImgMime,data:chatImgB64}});
+  uc.push({type:'text',text:disp});
+  chatHistory.push({role:'user',content:uc});
+
+  try{
+    const raw=await callClaude(sys,chatHistory);
+    chatHistory.push({role:'assistant',content:raw});
+    const parts=raw.split('---');
+    const desc=(parts[1]||'').replace('変更内容:','').trim();
+    try{
+      const parsed=JSON.parse(parts[0].replace(/```json|```/g,'').trim());
+      let upd=false;
+      [1,2,3].forEach(f=>{const d=parsed[f]||parsed[String(f)];if(d?.rooms){Object.assign(FLOORS[f],d);upd=true;}});
+      if(upd){draw2D();buildModel();}
+    }catch(_){}
+    document.getElementById('typ')?.remove();
+    addMsg('ai',desc||raw);
+  }catch(e){document.getElementById('typ')?.remove();addMsg('ai','エラー: '+e.message);}
+  document.getElementById('sendbtn').disabled=false;
+  chatImgB64=null;chatImgMime=null;chatImgSrc=null;
+  inp.placeholder='修正内容を入力... (Enterで送信)';
+}
+
+document.getElementById('cinput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendChat();}});
+
+// ============================================================
+// Claude API（直接呼び出し）
+// ============================================================
+async function callClaude(system,messages){
+  const res=await fetch('https://api.anthropic.com/v1/messages',{
+    method:'POST',
+    headers:{'Content-Type':'application/json','x-api-key':API_KEY,'anthropic-version':'2023-06-01'},
+    body:JSON.stringify({model:'claude-sonnet-4-20250514',max_tokens:2000,system,messages})
+  });
+  if(!res.ok)throw new Error('API Error '+res.status);
+  const d=await res.json();
+  return d.content?.map(c=>c.text||'').join('')||'';
+}
+
+function toB64(file){
+  return new Promise((ok,ng)=>{const r=new FileReader();r.onload=e=>ok(e.target.result.split(',')[1]);r.onerror=ng;r.readAsDataURL(file);});
+}
+
+// ============================================================
+// 初期化
+// ============================================================
+function initApp(){
+  draw2D();
+  addMsg('ai','A棟の間取り（1〜3階）を読み込みました。\n\n【使い方】\n📷 図面を読み込む → 手書き写真をアップロード → 自動解析・3D反映\n💬 チャット入力 → 修正指示をテキストで\n📎 図面を添付 → 画像を見ながら指示\n\nまず手書き図面をアップロードしてみてください！');
+  setTimeout(()=>{
+    if(window.THREE)initThree();
+    else{let t=0;const iv=setInterval(()=>{if(window.THREE){clearInterval(iv);initThree();}if(++t>30)clearInterval(iv);},300);}
+  },100);
+  window.addEventListener('resize',()=>{resizeThree();draw2D();});
+}
+
+// APIキーが既にあれば即起動
+if(API_KEY){document.getElementById('api-modal').style.display='none';initApp();}
+</script>
+</body>
+</html>
