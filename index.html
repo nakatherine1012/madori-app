@@ -307,7 +307,7 @@ function initThree(){
   resizeThree();
   scene.add(new THREE.AmbientLight(0xffffff,.55));
   const sun=new THREE.DirectionalLight(0xfff8e0,1.1);sun.position.set(10,18,8);sun.castShadow=true;scene.add(sun);
-  scene.add(Object.assign(new THREE.DirectionalLight(0xddeeff,.3),{position:new THREE.Vector3(-8,5,-5)}));
+  const fill=new THREE.DirectionalLight(0xddeeff,.3);fill.position.set(-8,5,-5);scene.add(fill);
   const gnd=new THREE.Mesh(new THREE.PlaneGeometry(60,60),new THREE.MeshLambertMaterial({color:0xC8D4B8}));
   gnd.rotation.x=-Math.PI/2;gnd.receiveShadow=true;scene.add(gnd);
   buildModel();
